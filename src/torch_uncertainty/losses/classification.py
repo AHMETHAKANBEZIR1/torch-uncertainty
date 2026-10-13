@@ -300,7 +300,7 @@ class ConflictualLoss(nn.Module):
             0, logits.shape[-1], (1,), dtype=torch.long, device=logits.device
         )
         ce_loss = F.cross_entropy(logits, targets, reduction=self.reduction)
-        reg_loss = -F.log_softmax(logits, dim=1)[:, class_index]
+        reg_loss = -F.log_softmax(logits, dim=1)[:, class_index].squeeze(1)
         if self.reduction == "sum":
             return ce_loss + self.reg_weight * reg_loss.sum()
         if self.reduction == "mean":

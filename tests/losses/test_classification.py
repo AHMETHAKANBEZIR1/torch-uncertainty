@@ -114,6 +114,33 @@ class TestConflictualLoss:
         loss = ConflictualLoss(reg_weight=1e-2, reduction=None)
         loss(torch.tensor([[0.0, 0.0]]), torch.tensor([0]))
 
+    @pytest.mark.parametrize("reduction", ["none", None, "mean", "sum"])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_per_example_penalty(
+        self, reduction: str | None, dtype: torch.dtype, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        logits = torch.tensor(
+            [[1.0, 0.0, -1.0], [0.0, 2.0, -0.5], [-1.0, 0.5, 1.0]],
+            dtype=dtype,
+            requires_grad=True,
+        )
+        targets = torch.tensor([0, 1, 2])
+        monkeypatch.setattr(
+            torch, "randint", lambda *_args, **kwargs: torch.tensor([2], device=kwargs["device"])
+        )
+        actual = ConflictualLoss(reg_weight=0.4, reduction=reduction)(logits, targets)
+        log_probs = logits.log_softmax(dim=1)
+        expected = -log_probs[torch.arange(3), targets] - 0.4 * log_probs[:, 2]
+        if reduction == "mean":
+            expected = expected.mean()
+        elif reduction == "sum":
+            expected = expected.sum()
+        torch.testing.assert_close(actual, expected)
+        weights = torch.tensor([1.0, 2.0, 4.0], dtype=dtype) if expected.ndim else 1.0
+        actual_grad = torch.autograd.grad((actual * weights).sum(), logits, retain_graph=True)[0]
+        expected_grad = torch.autograd.grad((expected * weights).sum(), logits)[0]
+        torch.testing.assert_close(actual_grad, expected_grad)
+
     def test_failures(self) -> None:
         with pytest.raises(
             ValueError,
