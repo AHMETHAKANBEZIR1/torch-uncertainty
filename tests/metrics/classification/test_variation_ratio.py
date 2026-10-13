@@ -89,3 +89,13 @@ def test_variation_ratio_criterion_shape_and_majority():
     )
     result = VariationRatioCriterion()(probs)
     torch.testing.assert_close(result, torch.tensor([1 / 3, 0.0]))
+
+
+@pytest.mark.parametrize("probabilistic", [False, True])
+def test_variation_ratio_unequal_batches(probabilistic):
+    probs = torch.tensor([[[0.8, 0.2], [0.6, 0.4]]]).expand(3, -1, -1)
+    metric = VariationRatio(probabilistic=probabilistic, reduction="none")
+    metric.update(probs[:1])
+    metric.update(probs[1:])
+    expected = torch.full((3,), 0.3 if probabilistic else 0.0)
+    torch.testing.assert_close(metric.compute(), expected)
