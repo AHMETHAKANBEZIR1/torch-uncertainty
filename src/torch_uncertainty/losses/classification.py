@@ -234,9 +234,9 @@ class ConfidencePenaltyLoss(nn.Module):
         """
         probs = F.softmax(logits, dim=1)
         ce_loss = F.cross_entropy(logits, targets, reduction=self.reduction)
-        reg_loss = torch.log(torch.tensor(logits.shape[-1], device=probs.device)) + (
+        reg_loss = torch.log(torch.tensor(logits.shape[1], device=probs.device)) + (
             probs * torch.log(probs + self.eps)
-        ).sum(dim=-1)
+        ).sum(dim=1)
         if self.reduction == "sum":
             return ce_loss + self.reg_weight * reg_loss.sum()
         if self.reduction == "mean":

@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -60,6 +62,29 @@ class TestConfidencePenaltyLoss:
         loss(torch.tensor([[0.0, 0.0]]), torch.tensor([0]))
         loss = ConfidencePenaltyLoss(reg_weight=1e-2, reduction=None)
         loss(torch.tensor([[0.0, 0.0]]), torch.tensor([0]))
+
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 3, 4), (2, 3, 2, 4)])
+    @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_class_axis(self, shape: tuple[int, ...], reduction: str, dtype: torch.dtype) -> None:
+        logits = torch.linspace(-1.5, 2.0, math.prod(shape), dtype=dtype).reshape(shape)
+        logits.requires_grad_()
+        targets = torch.arange(logits[:, 0].numel()).reshape(logits[:, 0].shape) % shape[1]
+        loss_fn = ConfidencePenaltyLoss(reg_weight=0.7, reduction=reduction)
+        actual = loss_fn(logits, targets)
+        log_probs = logits.log_softmax(dim=1)
+        probs = log_probs.exp()
+        cross_entropy = -log_probs.gather(1, targets.unsqueeze(1)).squeeze(1)
+        penalty = math.log(shape[1]) + (probs * (probs + loss_fn.eps).log()).sum(dim=1)
+        expected = cross_entropy + 0.7 * penalty
+        if reduction == "mean":
+            expected = expected.mean()
+        elif reduction == "sum":
+            expected = expected.sum()
+        torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-7)
+        actual_grad = torch.autograd.grad(actual.sum(), logits, retain_graph=True)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), logits)[0]
+        torch.testing.assert_close(actual_grad, expected_grad, rtol=1e-6, atol=1e-7)
 
     def test_failures(self) -> None:
         with pytest.raises(
